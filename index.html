@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>研词 · 考研英语词频词根记忆</title>
+<meta name="description" content="按真题词频排序的考研英语词库，带词根词缀拆解、每日计划、熟悉度勾选与间隔复习。纯本地运行，数据存在浏览器里。">
+<script>
+/* 首屏前应用主题，避免深色模式闪白 */
+try {
+  var _s = JSON.parse(localStorage.getItem('ky_vocab_state_v1') || 'null');
+  var _t = (_s && _s.settings && _s.settings.theme) || 'auto';
+  document.documentElement.dataset.theme = _t === 'auto'
+    ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+    : _t;
+} catch (e) {}
+</script>
+<link rel="stylesheet" href="css/app.css?v=20261029e">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📖</text></svg>">
+</head>
+<body>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <strong>研词</strong>
+      <span>KAOYAN · VOCAB</span>
+    </div>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="主导航">
+      <button role="tab" data-view="today" aria-selected="true">今日</button>
+      <button role="tab" data-view="library" aria-selected="false">词库</button>
+      <button role="tab" data-view="roots" aria-selected="false">词根</button>
+      <button role="tab" data-view="stats" aria-selected="false">统计</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="streak-pill" id="streakPill" title="连续学习天数">🔥 <span id="streakNum">0</span> 天</div>
+    <button class="icon-btn" id="themeBtn" title="切换深浅色" aria-label="切换深浅色">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"/></svg>
+    </button>
+    <button class="icon-btn" id="settingsBtn" title="设置与数据" aria-label="设置">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+    </button>
+  </header>
+
+  <main id="view" aria-live="polite">
+    <div class="empty">正在载入 5528 个单词…</div>
+  </main>
+</div>
+
+<!-- 单词详情抽屉 -->
+<div class="drawer-mask" id="drawerMask"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="单词详情">
+  <div class="drawer-head" id="drawerHead"></div>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<div id="modalRoot"></div>
+<div class="toast" id="toast"></div>
+
+<script src="data/affixes.js?v=20261029a"></script>
+<script src="data/words.js?v=20261029a"></script>
+<script src="data/basic-words.js?v=20261029e"></script>
+<script src="js/morphology.js?v=20261029e"></script>
+<script src="js/store.js?v=20261029e"></script>
+<script src="js/scheduler.js?v=20261029e"></script>
+<script src="js/queue.js?v=20261029e"></script>
+<script src="js/app.js?v=20261029e"></script>
+</body>
+</html>
