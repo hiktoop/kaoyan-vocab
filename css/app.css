@@ -1212,3 +1212,14 @@ html[data-theme="dark"] .seg-level button[aria-pressed="true"] { color: #0e1512;
   .section-title { flex-direction: column; align-items: flex-start; gap: 3px; }
   .section-title h2 { line-height: 1.35; }
 }
+
+.pos-tag {
+  display: inline-block;
+  margin-right: 5px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  vertical-align: 1px;
+}

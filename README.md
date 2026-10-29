@@ -25,6 +25,7 @@
 
 ### 词库（默认 5315 词）
 - 按词频、学习优先级、字母、熟悉度排序
+- 每个词带**词性标注**（n. / v. / adj. / adv. / prep. …），词库可按词性筛选
 - 搜索英文或中文释义
 - 筛选：词频区间、CEFR 等级、首字母、未学 / 在学 / 待复习 / 已掌握 / 收藏 / 有笔记
 - 每行右侧的 **×** 可从词库移除该词；详情抽屉底部也有「从词库移除」
@@ -118,6 +119,7 @@ window.KY_WORDS = {
     cat: '思考、推理与分析', cefr: 'B2', acad: true, adv: false,
     ex: 'reading comprehension', exz: '阅读理解力', exs: '真题 2021英二·T4', z: 1,
     ph: 'ˌkɑːmprɪˈhenʃn',
+    p: ['n'],                  // 词性：n / v / adj / adv / prep / conj / pron ...
     rk: 1,                     // 学习优先级序号
     rt: '词根说明', af: '词缀说明', mem: '记忆辅助', hist: '词源'
   }]
@@ -175,9 +177,11 @@ make / take / work / people 这类高频实词不在其中。
 | [exam-data/NETEMVocabulary](https://github.com/exam-data/NETEMVocabulary) | 5530 词表、真题词频排序、释义、例句、语义分类、CEFR 等级、智能重排序号 | CC BY-NC-SA 4.0 |
 | [vxiaozhi/vocabulary-book-by-deepseek](https://github.com/vxiaozhi/vocabulary-book-by-deepseek) | 逐词词根 / 词缀 / 记忆辅助 / 词源解析 | Apache-2.0 |
 | [KyleBing/english-vocabulary](https://github.com/KyleBing/english-vocabulary) | 美式音标 | BSD-3-Clause |
+| [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT) | 词性标注（n. / v. / adj. …） | MIT |
 
 - 词频来自约 200 套四六级、考研、专四专八试卷文本统计；前 2444 词出现 40 次以上。
 - 词根解析与部分例句由 AI 生成，已做初步校对，但难免有疏漏；发现错误可直接改 `data/words.js` 对应字段，或用 `scripts/build_words.py` 重新生成。
+- 词性来自 ECDICT 的释义行（一个词可能同时是名词/动词，页面会并列显示）。
 - 本仓库以 **CC BY-NC-SA 4.0** 发布（代码 + 整理数据），仅限非商业用途；完整的第三方授权见 [NOTICE.md](NOTICE.md)。
 
 ---

@@ -10,6 +10,7 @@
 | [exam-data/NETEMVocabulary](https://github.com/exam-data/NETEMVocabulary) | 词表、真题词频排序、释义、例句、语义分类、CEFR 等级、智能重排序号 | CC BY-NC-SA 4.0 |
 | [vxiaozhi/vocabulary-book-by-deepseek](https://github.com/vxiaozhi/vocabulary-book-by-deepseek) | 逐词词根 / 词缀 / 记忆辅助 / 词源解析 | Apache-2.0 |
 | [KyleBing/english-vocabulary](https://github.com/KyleBing/english-vocabulary) | 美式音标 | BSD-3-Clause |
+| [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT) | 词性标注 | MIT |
 
 ## 说明
 

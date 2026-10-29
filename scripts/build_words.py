@@ -22,6 +22,7 @@
   window.KY_WORDS = { meta: {...}, words: [ {...}, ... ] }
 """
 import argparse
+import csv
 import json
 import os
 import re
@@ -147,7 +148,60 @@ def useful(t):
     return bool(t) and len(t) >= 8 and not LOW_VALUE.search(t)
 
 
-def build(netem_path, roots_path, phonetic_path, out_path):
+
+POS_MAP = {
+    'n': 'n', 'v': 'v', 'vt': 'v', 'vi': 'v',
+    'a': 'adj', 'adj': 'adj', 'ad': 'adv', 'adv': 'adv',
+    'prep': 'prep', 'conj': 'conj', 'pron': 'pron', 'num': 'num',
+    'art': 'art', 'int': 'int', 'aux': 'aux', 'abbr': 'abbr',
+}
+
+# ECDICT 里缺的几个词 / 短语，人工补齐
+POS_OVERRIDES = {
+    'bacteria': ['n'], 'agenda': ['n'], 'laptop': ['n'], 'cyberspace': ['n'],
+    'hi': ['int'], 'hello': ['int'], 'goodbye': ['int'],
+    'industrialise': ['v'], 'fertiliser': ['n'], 'generalise': ['v'], 'mobilise': ['v'],
+    'according to': ['prep'], 'air conditioning': ['n'], 'analog': ['adj', 'n'],
+    'data': ['n'], 'ice cream': ['n'], 'internet': ['n'], 'living room': ['n'],
+    'ought to': ['aux'], 'owing to': ['prep'], 'scissors': ['n'], 'trousers': ['n'],
+}
+
+
+def parse_pos(translation):
+    """从 ECDICT 的 translation 字段里提取词性标记（n. / vt. / a. ...）。"""
+    out = []
+    for line in re.split(r'\\n|\n', translation or ''):
+        line = line.strip()
+        if not line or line.startswith('['):
+            continue
+        m = re.match(r'^([a-zA-Z]{1,5})\.\s', line)
+        if m and m.group(1).lower() in POS_MAP:
+            tag = POS_MAP[m.group(1).lower()]
+            if tag not in out:
+                out.append(tag)
+    return out
+
+
+def load_pos(path):
+    """读取 ECDICT CSV，返回 word -> [pos]；文件很大（60MB+），但只读一次。"""
+    if not path or not os.path.exists(path):
+        print('[warn] 未找到 ECDICT，词性字段将为空', file=sys.stderr)
+        return {}
+    csv.field_size_limit(10 ** 9)
+    table = {}
+    with open(path, encoding='utf-8', errors='ignore') as f:
+        for row in csv.DictReader(f):
+            w = (row.get('word') or '').strip().lower().lstrip("'")
+            if not w:
+                continue
+            ps = parse_pos(row.get('translation'))
+            if ps:
+                table[w] = ps
+    print('词性表: %d 词' % len(table), file=sys.stderr)
+    return table
+
+
+def build(netem_path, roots_path, phonetic_path, out_path, ecdict_path=''):
     data = json.load(open(netem_path, encoding='utf-8'))
     table = next(iter(data.values()))
 
@@ -161,6 +215,8 @@ def build(netem_path, roots_path, phonetic_path, out_path):
             roots[d.get('word', '').lower()] = d.get('analysis', '')
     else:
         print('[warn] 未找到词根数据，将只用规则库拆解', file=sys.stderr)
+
+    pos_table = load_pos(ecdict_path)
 
     phones = {}
     if phonetic_path and os.path.exists(phonetic_path):
@@ -213,6 +269,9 @@ def build(netem_path, roots_path, phonetic_path, out_path):
             'ph': phones.get(key, ''),
             'rk': rerank.get(key) or 99999,
         }
+        pv = pos_table.get(key) or POS_OVERRIDES.get(key)
+        if pv:
+            item['p'] = pv[:4]
         if analysis:
             r = clean(section(analysis, SECT_ROOT))
             a = clean(section(analysis, SECT_AFFIX))
@@ -238,6 +297,7 @@ def build(netem_path, roots_path, phonetic_path, out_path):
         'withRoots': sum(1 for w in words if w.get('rt')),
         'withAffix': sum(1 for w in words if w.get('af')),
         'withPhonetic': sum(1 for w in words if w.get('ph')),
+        'withPos': sum(1 for w in words if w.get('p')),
         'highFreq': sum(1 for w in words if w['f'] >= 40),
         'sources': [
             {'name': 'NETEMVocabulary', 'url': 'https://github.com/exam-data/NETEMVocabulary',
@@ -246,6 +306,8 @@ def build(netem_path, roots_path, phonetic_path, out_path):
              'used': '词根 / 词缀 / 助记解析', 'license': '见原仓库'},
             {'name': 'english-vocabulary', 'url': 'https://github.com/KyleBing/english-vocabulary',
              'used': '美式音标', 'license': '见原仓库'},
+            {'name': 'ECDICT', 'url': 'https://github.com/skywind3000/ECDICT',
+             'used': '词性标注（n./v./adj. 等）', 'license': 'MIT'},
         ],
         'builtAt': __import__('datetime').date.today().isoformat(),
     }
@@ -266,6 +328,7 @@ if __name__ == '__main__':
     ap.add_argument('--netem', required=True)
     ap.add_argument('--roots', default='')
     ap.add_argument('--phonetic', default='')
+    ap.add_argument('--ecdict', default='')
     ap.add_argument('--out', default='data/words.js')
     a = ap.parse_args()
-    build(a.netem, a.roots, a.phonetic, a.out)
+    build(a.netem, a.roots, a.phonetic, a.out, a.ecdict)

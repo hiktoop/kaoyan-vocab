@@ -105,7 +105,7 @@
   var state = {
     view: 'today',
     session: null,
-    lib: { q: '', status: 'all', cefr: 'all', band: 'all', letter: 'all', sort: 'freq', limit: 90 },
+    lib: { q: '', status: 'all', cefr: 'all', band: 'all', pos: 'all', letter: 'all', sort: 'freq', limit: 90 },
     rootKey: null,
     rootQuery: ''
   };
@@ -159,6 +159,24 @@
     if (f >= 10) return { key: 'C', label: '中频', tone: 'accent' };
     return { key: 'D', label: '低频', tone: '' };
   }
+
+  var POS_LABEL = {
+    n: 'n.', v: 'v.', adj: 'adj.', adv: 'adv.', prep: 'prep.',
+    conj: 'conj.', pron: 'pron.', num: 'num.', art: 'art.',
+    int: 'int.', aux: 'aux.', abbr: 'abbr.'
+  };
+  var POS_CN = {
+    n: '名词', v: '动词', adj: '形容词', adv: '副词', prep: '介词',
+    conj: '连词', pron: '代词', num: '数词', art: '冠词',
+    int: '感叹词', aux: '助动词', abbr: '缩写'
+  };
+
+  function posList(w) { return (w && w.p) ? w.p : []; }
+  function posText(w, max) {
+    var arr = posList(w).slice(0, max || 3).map(function (p) { return POS_LABEL[p] || (p + '.'); });
+    return arr.join(' / ');
+  }
+  function hasPos(w, p) { return posList(w).indexOf(p) !== -1; }
 
   function pips(lv) {
     var out = '';
@@ -432,7 +450,7 @@
           return '<div class="preview-row" data-open="' + esc(w.w) + '">' +
             '<span class="badge" data-tone="' + (it.tag === '复习' ? 'info' : 'accent') + '">' + it.tag + '</span>' +
             '<span class="pv-w">' + esc(w.w) + '</span>' +
-            '<span class="pv-t">' + esc(w.t) + '</span>' +
+            '<span class="pv-t">' + (posText(w, 2) ? '<span class="pos-tag">' + esc(posText(w, 2)) + '</span>' : '') + esc(w.t) + '</span>' +
             '<span class="pv-f mono tiny">' + band.label + ' ' + w.f + '</span>' +
             pips(rec && rec.first ? rec.lv : 0) +
           '</div>';
@@ -471,6 +489,7 @@
       '<div class="word-meta">' +
         '<span class="badge" data-tone="' + band.tone + '">' + band.label + ' · 词频 ' + w.f + '</span>' +
         '<span class="badge">#' + (w._i + 1) + '</span>' +
+        (posText(w, 3) ? '<span class="badge" data-tone="accent" title="' + esc(posList(w).map(function (p) { return POS_CN[p] || p; }).join('、')) + '">' + esc(posText(w, 3)) + '</span>' : '') +
         (w.cefr ? '<span class="badge">CEFR ' + w.cefr + '</span>' : '') +
         (w.acad ? '<span class="badge">学术词汇</span>' : '') +
         (w.adv ? '<span class="badge">高级词汇</span>' : '') +
@@ -484,7 +503,9 @@
         '<button class="btn btn-primary" style="margin-top:14px" data-act="reveal">显示释义（空格）</button>' +
       '</div>';
     } else {
-      html += '<p class="sense">' + esc(w.t) + '</p>';
+      html += '<p class="sense">' +
+        (posText(w, 2) ? '<span class="pos">' + esc(posText(w, 2)) + '</span>' : '') +
+        esc(w.t) + '</p>';
       if (w.ex) {
         html += '<div class="example"><div class="en">' + esc(w.ex) + '</div>' +
           (w.exz ? '<div class="zh">' + esc(w.exz) + '</div>' : '') +
@@ -668,6 +689,9 @@
       var w = WORDS[i];
       if (q && w.w.toLowerCase().indexOf(q) === -1 && w.t.indexOf(q) === -1) continue;
       if (f.cefr !== 'all' && w.cefr !== f.cefr) continue;
+      if (f.pos === 'other') {
+        if (!w.p || w.p.some(function (p) { return ['n', 'v', 'adj', 'adv'].indexOf(p) !== -1; })) continue;
+      } else if (f.pos !== 'all' && !hasPos(w, f.pos)) continue;
       if (f.band !== 'all' && bandOf(w.f).key !== f.band) continue;
       if (f.letter !== 'all' && w.w[0].toLowerCase() !== f.letter) continue;
       var rec = S.word(w.w);
@@ -715,6 +739,12 @@
           option('S', '超高频 ≥500', f.band) + option('A', '高频 100–499', f.band) +
           option('B', '常考 40–99', f.band) + option('C', '中频 10–39', f.band) + option('D', '低频 <10', f.band) +
         '</select>' +
+        '<select class="select" id="libPos" aria-label="词性">' +
+          option('all', '全部词性', f.pos) +
+          option('n', '名词 n.', f.pos) + option('v', '动词 v.', f.pos) +
+          option('adj', '形容词 adj.', f.pos) + option('adv', '副词 adv.', f.pos) +
+          option('other', '其他词性', f.pos) +
+        '</select>' +
         '<select class="select" id="libSort" aria-label="排序">' +
           option('freq', '按词频', f.sort) + option('rerank', '按学习优先级', f.sort) +
           option('alpha', '按字母', f.sort) + option('level', '按熟悉度', f.sort) +
@@ -754,7 +784,7 @@
       '<span class="rank">' + (w._i + 1) + '</span>' +
       '<span><span class="w">' + esc(w.w) + '</span>' +
         (cleanPhonetic(w.ph) ? '<div class="ph">/' + esc(cleanPhonetic(w.ph)) + '/</div>' : '') + '</span>' +
-      '<span class="tr">' + esc(w.t) + '</span>' +
+      '<span class="tr">' + (posText(w, 2) ? '<span class="pos-tag">' + esc(posText(w, 2)) + '</span>' : '') + esc(w.t) + '</span>' +
       '<span class="freq">' + fmtNum(w.f) + '</span>' +
       '<span>' + pips(lv) + '</span>' +
       '<span class="tiny ' + (rec && rec.due && rec.due <= S.todayStr() ? '' : 'faint') + '" style="text-align:right">' +
@@ -943,7 +973,12 @@
 
     var html = '';
 
-    html += '<div class="detail-block"><h4>释义</h4><p style="font-size:16px">' + esc(w.t) + '</p>' +
+    html += '<div class="detail-block"><h4>释义</h4>' +
+      (posList(w).length ? '<div class="word-meta" style="margin:0 0 8px">' + posList(w).map(function (p) {
+        return '<span class="badge" data-tone="accent" title="' + esc(POS_CN[p] || p) + '">' +
+          esc(POS_LABEL[p] || (p + '.')) + ' ' + esc(POS_CN[p] || '') + '</span>';
+      }).join('') + '</div>' : '') +
+      '<p style="font-size:16px">' + esc(w.t) + '</p>' +
       '<div class="tiny faint">' + esc(w.cat) + (w.acad ? ' · 学术词汇' : '') + (w.adv ? ' · 高级词汇' : '') +
       (w.alt ? ' · 其他拼写：' + esc(w.alt) : '') + '</div></div>';
 
@@ -1234,6 +1269,7 @@
         return;
       }
       if (t.id === 'libBand') { state.lib.band = t.value; state.lib.limit = 90; render(); }
+      if (t.id === 'libPos') { state.lib.pos = t.value; state.lib.limit = 90; render(); }
       if (t.id === 'libSort') { state.lib.sort = t.value; render(); }
       if (t.id === 'libLetter') { state.lib.letter = t.value; state.lib.limit = 90; render(); }
       if (t.id === 'setTheme') {
