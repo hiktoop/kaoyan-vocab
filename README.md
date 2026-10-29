@@ -40,6 +40,17 @@
 - 每个词根展示变体、含义、词源、例词
 - 列出该词根下的全部考研词，点词直接打开详情
 
+### 真题（考研英语二）
+
+![真题练习](docs/exam-preview.jpg)
+
+- 2010–2026 年英语二 **102 个练习（765 道客观题）**：阅读理解 68 篇、完形填空 17 套、新题型 17 套
+- 两种模式：**练习模式**（选完立即显示对错与解析）、**模考模式**（交卷后统一批改）
+- 做题界面：文章 + 题目双栏、文章内点词直接查词、计时器、题目标记、答题卡跳转、键盘 A–G / 1–9 作答
+- 交卷后：得分、正确率、用时、逐题解析、只看错题、原文与中译
+- 分析页：总正确率、题型掌握度、分年份正确率、最近 12 次趋势、最近错题、最近练习
+- 未完成的练习会自动保存，下次可继续
+
 ### 统计
 - 熟悉度分布、近 7 天完成量、未来 7 天复习量预测
 - CEFR 等级覆盖进度、最近 5 周打卡热力图、连续打卡天数
@@ -88,6 +99,7 @@ kaoyan-vocab/
 ├── css/app.css
 ├── data/
 │   ├── words.js        # 5528 词（自动生成，勿手改）
+│   ├── papers.js       # 英语二真题 102 个练习 / 765 题（自动生成）
 │   ├── basic-words.js  # 基础虚词表（默认隐藏，可手改）
 │   └── affixes.js      # 词根 / 前缀 / 后缀数据库（可手改）
 ├── js/
@@ -95,9 +107,11 @@ kaoyan-vocab/
 │   ├── store.js        # localStorage 持久化 + 版本迁移
 │   ├── scheduler.js    # 间隔重复算法
 │   ├── queue.js        # 今日队列 / 日历 / 统计
+│   ├── exam.js         # 真题数据、判分、练习记录、分析
 │   └── app.js          # 视图与交互
 ├── scripts/
-│   └── build_words.py  # 从原始数据生成 data/words.js
+│   ├── build_words.py  # 从原始数据生成 data/words.js
+│   └── build_papers.py # 从 English2 数据生成 data/papers.js
 └── README.md
 ```
 
@@ -178,10 +192,12 @@ make / take / work / people 这类高频实词不在其中。
 | [vxiaozhi/vocabulary-book-by-deepseek](https://github.com/vxiaozhi/vocabulary-book-by-deepseek) | 逐词词根 / 词缀 / 记忆辅助 / 词源解析 | Apache-2.0 |
 | [KyleBing/english-vocabulary](https://github.com/KyleBing/english-vocabulary) | 美式音标 | BSD-3-Clause |
 | [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT) | 词性标注（n. / v. / adj. …） | MIT |
+| [houxinjin774/English2](https://github.com/houxinjin774/English2) | 考研英语二 2010–2026 真题、答案与解析（原站：懒笔记） | 原仓库未标注，仅用于个人学习 |
 
 - 词频来自约 200 套四六级、考研、专四专八试卷文本统计；前 2444 词出现 40 次以上。
 - 词根解析与部分例句由 AI 生成，已做初步校对，但难免有疏漏；发现错误可直接改 `data/words.js` 对应字段，或用 `scripts/build_words.py` 重新生成。
 - 词性来自 ECDICT 的释义行（一个词可能同时是名词/动词，页面会并列显示）。
+- 真题目前只包含**英语二**的客观题（阅读/完形/新题型），英语一和翻译/写作暂未纳入；答案与解析来自开源整理，可能有误，发现后可对照原卷。
 - 本仓库以 **CC BY-NC-SA 4.0** 发布（代码 + 整理数据），仅限非商业用途；完整的第三方授权见 [NOTICE.md](NOTICE.md)。
 
 ---
@@ -194,8 +210,17 @@ make / take / work / people 这类高频实词不在其中。
 - 自动拆解对部分拉丁语同化拼写（如 assimilation）无能为力，会退回「基础词」，此时以上方的逐词解析为准。
 - 数据全部在本地，多设备不同步；用导出/导入 JSON 迁移。
 
+## 重新生成真题数据
+
+```bash
+git clone --depth 1 https://github.com/houxinjin774/English2.git /tmp/English2
+python3 scripts/build_papers.py --src /tmp/English2 --out data/papers.js
+```
+
 ## 后续可以加
 
+- [ ] 英语一真题（当前只有英语二客观题）
+- [ ] 翻译 / 写作主观题与参考范文
 - [ ] 错题本 / 只练「忘记」过的词
 - [ ] 单词听写与拼写测试
 - [ ] 按真题年份/题型筛选

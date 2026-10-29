@@ -62,6 +62,7 @@
       notes: {},
       stars: {},
       removed: {},
+      exam: { attempts: [], session: null },
       stats: { streak: 0, bestStreak: 0, lastActive: null, totalReviews: 0, totalGrades: { 1: 0, 2: 0, 3: 0, 4: 0 } }
     };
   }

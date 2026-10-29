@@ -11,6 +11,7 @@
 | [vxiaozhi/vocabulary-book-by-deepseek](https://github.com/vxiaozhi/vocabulary-book-by-deepseek) | 逐词词根 / 词缀 / 记忆辅助 / 词源解析 | Apache-2.0 |
 | [KyleBing/english-vocabulary](https://github.com/KyleBing/english-vocabulary) | 美式音标 | BSD-3-Clause |
 | [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT) | 词性标注 | MIT |
+| [houxinjin774/English2](https://github.com/houxinjin774/English2) | 考研英语二真题、答案与解析（原站：懒笔记考研英语真题站） | 原仓库未标注，仅用于个人学习 |
 
 ## 说明
 

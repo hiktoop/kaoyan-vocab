@@ -19,6 +19,7 @@
   var SRS = global.KY_SRS;
   var Q = global.KY_QUEUE;
   var M = global.KY_MORPH;
+  var EX = global.KY_EXAM;
 
   var BASIC = new Set((global.KY_BASIC_WORDS || []).map(function (w) { return String(w).toLowerCase(); }));
 
@@ -35,6 +36,7 @@
   var MORPH_CACHE = new Map();
   var WORDS = [];            // 当前展示的词（可能已过滤基础虚词）
   var BY_WORD = new Map();   // word -> 词条
+  var BY_LOWER = new Map();  // lower -> 原始词条 key
   var FAMILY = {};           // rootKey -> [word]
   var ROOT_COUNTS = {};      // rootKey -> 词数
   var ROOTED = new Set();    // 已归入词根词族的词
@@ -75,9 +77,11 @@
     });
 
     BY_WORD = new Map();
+    BY_LOWER = new Map();
     WORDS.forEach(function (w, i) {
       w._i = i;                 // 在当前词表中的序号（= 高频排名）
       BY_WORD.set(w.w, w);
+      BY_LOWER.set(w.w.toLowerCase(), w.w);
     });
 
     FAMILY = {};
@@ -107,7 +111,10 @@
     session: null,
     lib: { q: '', status: 'all', cefr: 'all', band: 'all', pos: 'all', letter: 'all', sort: 'freq', limit: 90 },
     rootKey: null,
-    rootQuery: ''
+    rootQuery: '',
+    paperTab: 'library',
+    paperFilter: { year: 'all', type: 'all' },
+    exam: null
   };
 
   /* ---------- 小工具 ---------- */
@@ -793,6 +800,572 @@
     '</div>';
   }
 
+
+  /* ---------- 真题 ---------- */
+
+  function paperTitleShort(p) {
+    return p.title.replace(/^\d{4}年真题\s*·\s*/, '');
+  }
+
+  function paperTypeMeta(t) { return EX.typeMeta(t); }
+
+  function paperKpi(v, l) {
+    return '<div class="pk"><div class="v">' + v + '</div><div class="k">' + l + '</div></div>';
+  }
+
+  function paperCardHTML(p) {
+    var tm = paperTypeMeta(p.type);
+    var best = EX.bestOf(p.id);
+    var pct = best ? Math.round(best.best.correct / (best.best.total || 1) * 100) : 0;
+    return '<button class="paper-card" data-paper="' + esc(p.id) + '">' +
+      '<div class="pc-top"><span class="badge" data-tone="' + tm.color + '">' + tm.short + '</span>' +
+        '<span class="faint tiny">' + p.questions.length + ' 题 · ' + (p.minutes || '—') + ' 分钟</span></div>' +
+      '<div class="pc-title">' + esc(paperTitleShort(p)) + '</div>' +
+      '<div class="pc-foot">' + (best
+        ? '最好 ' + best.best.correct + '/' + best.best.total + ' · ' + pct + '%'
+        : '未练习') + '</div>' +
+      '<div class="pc-bar"><i style="width:' + pct + '%"></i></div>' +
+    '</button>';
+  }
+
+  function renderPapers() {
+    var stats = EX.stats();
+    var sess = EX.getSession();
+    var f = state.paperFilter;
+    var papers = EX.papers.filter(function (p) {
+      if (f.year !== 'all' && String(p.year) !== String(f.year)) return false;
+      if (f.type !== 'all' && p.type !== f.type) return false;
+      return true;
+    });
+
+    var html = '<div class="paper-hero">' +
+      '<div><div class="badge" data-tone="accent">考研英语（二）</div>' +
+        '<h1>历年真题 · 客观题</h1>' +
+        '<div class="muted small">2010–2026 · ' + EX.meta.count + ' 个练习 · ' + EX.meta.questions +
+          ' 道题 · 当前为英语二，英语一整理中 · 答案与解析仅供参考</div></div>' +
+      '<div class="seg" role="tablist">' +
+        '<button data-ptab="library" aria-pressed="' + (state.paperTab === 'library') + '">题库</button>' +
+        '<button data-ptab="analysis" aria-pressed="' + (state.paperTab === 'analysis') + '">分析</button>' +
+      '</div>' +
+    '</div>';
+
+    if (sess) {
+      var sp = EX.get(sess.paperId);
+      var sessAnswered = Object.keys(sess.answers || {}).length;
+      if (sp && sessAnswered > 0) {
+        html += '<div class="resume-banner"><div><b>未完成的练习</b> · ' + esc(sp.title) +
+          ' <span class="faint tiny">' + Object.keys(sess.answers || {}).length + ' / ' + sp.questions.length + ' 已答</span></div>' +
+          '<div style="display:flex;gap:8px"><button class="btn btn-sm btn-primary" data-resume>继续</button>' +
+          '<button class="btn btn-sm" data-discard="1">放弃</button></div></div>';
+      }
+    }
+
+    if (state.paperTab === 'analysis') {
+      return html + paperAnalysisHTML(stats);
+    }
+
+    html += '<div class="paper-kpis card">' +
+      paperKpi(stats.donePapers + ' / ' + EX.meta.count, '已完成练习') +
+      paperKpi(stats.totalQ, '累计答题') +
+      paperKpi((stats.accuracy * 100).toFixed(1) + '%', '总正确率') +
+      paperKpi(stats.wrong.length, '近期错题') +
+    '</div>';
+
+    html += '<div class="paper-filters">' +
+      '<select class="select" id="paperYear" aria-label="年份">' +
+        option('all', '全部年份', f.year) +
+        EX.meta.years.map(function (y) { return option(String(y), y + ' 年', f.year); }).join('') +
+      '</select>' +
+      '<div class="filter-chips" style="padding:0">' +
+        paperTypeChip('all', '全部题型', f.type) +
+        paperTypeChip('reading', '阅读理解', f.type) +
+        paperTypeChip('cloze', '完形填空', f.type) +
+        paperTypeChip('newtype', '新题型', f.type) +
+      '</div>' +
+      '<span class="paper-count tiny faint">' + papers.length + ' 个练习</span>' +
+    '</div>';
+
+    var years = [];
+    papers.forEach(function (p) { if (years.indexOf(p.year) === -1) years.push(p.year); });
+    html += '<div class="paper-years">' + years.map(function (y) {
+      return '<div class="year-block"><div class="year-label">' + y + '<small>年</small></div>' +
+        '<div class="paper-cards">' +
+          papers.filter(function (p) { return p.year === y; }).map(paperCardHTML).join('') +
+        '</div></div>';
+    }).join('') + '</div>' +
+    '<div class="paper-source tiny faint">真题数据：houxinjin774/English2（源自懒笔记考研英语真题站）· 答案与解析由开源整理，仅供参考，仅用于个人学习。</div>';
+
+    return html;
+  }
+
+  function paperTypeChip(v, label, cur) {
+    return '<button class="filter-chip" data-ptype="' + v + '" aria-pressed="' + (cur === v) + '">' + label + '</button>';
+  }
+
+  function trendSVG(trend) {
+    if (!trend.length) return '';
+    var w = 640, h = 150, pad = 22;
+    if (trend.length === 1) {
+      var onlyY = h - pad - trend[0].accuracy * (h - 2 * pad);
+      return '<svg class="trend" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-label="正确率趋势">' +
+        '<line x1="' + pad + '" y1="' + (h - pad) + '" x2="' + (w - pad) + '" y2="' + (h - pad) + '" stroke="var(--border)" stroke-dasharray="3 4"/>' +
+        '<circle cx="' + (w / 2) + '" cy="' + onlyY.toFixed(1) + '" r="4.5" fill="var(--accent)"/>' +
+        '<text x="' + (w / 2 + 12) + '" y="' + (onlyY - 8).toFixed(1) + '" font-size="12" fill="var(--fg-muted)">' +
+          (trend[0].accuracy * 100).toFixed(0) + '%</text></svg>';
+    }
+    var pts = trend.map(function (t, i) {
+      var x = trend.length === 1 ? w / 2 : pad + i * (w - 2 * pad) / (trend.length - 1);
+      var y = h - pad - t.accuracy * (h - 2 * pad);
+      return [x, y];
+    });
+    var line = pts.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ');
+    var area = pad + ',' + (h - pad) + ' ' + line + ' ' + (w - pad) + ',' + (h - pad);
+    var dots = pts.map(function (p) {
+      return '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.2" fill="var(--accent)"/>';
+    }).join('');
+    return '<svg class="trend" viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" role="img" aria-label="正确率趋势">' +
+      '<polygon points="' + area + '" fill="var(--accent-soft)" opacity=".55"/>' +
+      '<polyline points="' + line + '" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>' +
+      dots + '</svg>';
+  }
+
+  function paperAnalysisHTML(stats) {
+    if (!stats.attempts) {
+      return '<div class="card empty paper-empty"><div style="font-family:var(--font-serif);font-size:22px;margin-bottom:6px">还没有刷题记录</div>' +
+        '<div class="muted small">先从一套阅读开始，做完交卷后这里会出现正确率、题型分布和错题分析。</div>' +
+        '<button class="btn btn-primary" data-ptab="library" style="margin-top:14px">去题库选题</button></div>';
+    }
+
+    var typeKeys = ['reading', 'cloze', 'newtype'];
+    var typeRows = typeKeys.map(function (k) {
+      var t = stats.byType[k];
+      if (!t) return '';
+      var acc = t.total ? t.correct / t.total : 0;
+      return '<div class="ana-row"><div class="ana-label">' + EX.types[k].name + '</div>' +
+        '<div class="ana-bar"><i style="width:' + (acc * 100).toFixed(1) + '%"></i></div>' +
+        '<div class="ana-val">' + (acc * 100).toFixed(0) + '% <span class="faint tiny">(' + t.correct + '/' + t.total + ')</span></div></div>';
+    }).join('');
+
+    var yearKeys = Object.keys(stats.byYear).map(Number).sort(function (a, b) { return b - a; });
+    var yearRows = yearKeys.map(function (y) {
+      var t = stats.byYear[y];
+      var acc = t.total ? t.correct / t.total : 0;
+      return '<div class="ana-row"><div class="ana-label">' + y + '</div>' +
+        '<div class="ana-bar"><i style="width:' + (acc * 100).toFixed(1) + '%"></i></div>' +
+        '<div class="ana-val">' + (acc * 100).toFixed(0) + '%</div></div>';
+    }).join('');
+
+    var wrongRows = stats.wrong.slice(0, 8).map(function (w) {
+      return '<button class="wrong-row" data-wrong="' + esc(w.paperId) + '|' + w.n + '">' +
+        '<span class="wr-title">' + esc(w.title) + ' · 第 ' + w.n + ' 题</span>' +
+        '<span class="wr-q">' + esc((w.q || '').slice(0, 70)) + '</span>' +
+        '<span class="wr-ans">你的 ' + (w.chosen == null ? '—' : String.fromCharCode(65 + w.chosen)) +
+          ' → 正确 ' + String.fromCharCode(65 + w.correct) + '</span></button>';
+    }).join('');
+
+    var recent = EX.attempts().slice(0, 8).map(function (a) {
+      var acc = a.total ? Math.round(a.correct / a.total * 100) : 0;
+      return '<button class="attempt-row" data-attempt="' + esc(a.id) + '">' +
+        '<span class="ar-title">' + esc(a.title) + '</span>' +
+        '<span class="ar-meta">' + new Date(a.finishedAt).toLocaleDateString('zh-CN') + ' · ' + EX.fmtDuration(a.duration) + '</span>' +
+        '<span class="ar-score">' + a.correct + '/' + a.total + ' · ' + acc + '%</span></button>';
+    }).join('');
+
+    return '<div class="paper-kpis card">' +
+      paperKpi(stats.donePapers, '已完成练习') +
+      paperKpi((stats.accuracy * 100).toFixed(1) + '%', '总正确率') +
+      paperKpi(stats.totalQ, '累计答题') +
+      paperKpi(EX.fmtDuration(stats.avgSeconds), '平均每题') +
+    '</div>' +
+    '<div class="ana-grid">' +
+      '<div class="card ana-card ana-wide"><h3>最近 12 次正确率</h3>' +
+        '<div class="trend-wrap">' + trendSVG(stats.trend) + '</div>' +
+        '<div class="trend-labels">' + stats.trend.map(function (t) {
+          var td = new Date(t.date);
+          return '<span>' + (td.getMonth() + 1) + '/' + td.getDate() + '</span>';
+        }).join('') + '</div></div>' +
+      '<div class="card ana-card"><h3>题型掌握度</h3>' + typeRows + '</div>' +
+      '<div class="card ana-card"><h3>分年份正确率</h3>' + yearRows + '</div>' +
+      '<div class="card ana-card ana-wide"><h3>最近错题</h3>' +
+        (wrongRows || '<div class="muted small">还没有错题，保持住。</div>') + '</div>' +
+      '<div class="card ana-card ana-wide"><h3>最近练习</h3>' + recent + '</div>' +
+    '</div>';
+  }
+
+  /* ---------- 开始一套卷 ---------- */
+
+  function openPaperStart(id) {
+    var p = EX.get(id);
+    if (!p) return;
+    var best = EX.bestOf(id);
+    var sess = EX.getSession();
+    var same = sess && sess.paperId === id;
+    var tm = paperTypeMeta(p.type);
+    var root = $('#modalRoot');
+    root.innerHTML = '<div class="modal-mask"><div class="modal paper-start" data-paper-id="' + esc(p.id) + '" role="dialog" aria-modal="true" aria-label="开始练习">' +
+      '<div class="modal-head"><div><div class="tiny faint">' + p.year + ' 年 · 英语二</div><h3>' + esc(p.title) + '</h3></div>' +
+        '<button class="icon-btn" data-close="1">✕</button></div>' +
+      '<div class="modal-body">' +
+        '<div class="ps-meta"><span class="badge" data-tone="' + tm.color + '">' + tm.name + '</span>' +
+          '<span class="faint tiny">' + p.questions.length + ' 题 · 建议 ' + (p.minutes || '—') + ' 分钟 · 满分 ' + (p.score || '—') + '</span></div>' +
+        (p.intro ? '<p class="muted small" style="margin:10px 0 0">' + esc(p.intro) + '</p>' : '') +
+        (best ? '<div class="ps-best">最好成绩：' + best.best.correct + '/' + best.best.total + ' · 做过 ' + best.count + ' 次</div>' : '') +
+        (same ? '<div class="ps-resume">有一套未完成的练习，可以继续。</div>' : '') +
+        (sess && !same ? '<div class="ps-warn">注意：开始新练习会覆盖当前未完成的「' + esc((EX.get(sess.paperId) || {}).title || '') + '」。</div>' : '') +
+        '<div class="ps-modes">' +
+          '<button class="ps-mode" data-start="practice"><b>练习模式</b><span>选完立即显示对错与解析，适合精做</span></button>' +
+          '<button class="ps-mode" data-start="mock"><b>模考模式</b><span>先答完，交卷后统一批改，适合计时模拟</span></button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        (same ? '<button class="btn btn-primary" data-resume>继续上次</button>' : '') +
+        '<button class="btn" data-close="1">取消</button>' +
+      '</div>' +
+    '</div></div>';
+  }
+
+  function startPaper(id, mode) {
+    var p = EX.get(id);
+    if (!p) return;
+    var sess = EX.createSession(id, mode);
+    state.view = 'exam';
+    state.exam = {
+      paper: p, sess: sess, submitted: false, result: null, attempt: null,
+      onlyWrong: false, showZh: false,
+      showPassage: p.type !== 'reading' || window.innerWidth > 820
+    };
+    closeModal();
+    render();
+    window.scrollTo(0, 0);
+    startExamTimer();
+  }
+
+  function resumePaper() {
+    var sess = EX.getSession();
+    if (!sess) return;
+    var p = EX.get(sess.paperId);
+    if (!p) return;
+    state.view = 'exam';
+    state.exam = {
+      paper: p, sess: sess, submitted: false, result: null, attempt: null,
+      onlyWrong: false, showZh: false,
+      showPassage: p.type !== 'reading' || window.innerWidth > 820
+    };
+    closeModal();
+    render();
+    window.scrollTo(0, 0);
+    startExamTimer();
+  }
+
+  /* ---------- 练习界面 ---------- */
+
+  var examTimerId = null;
+
+  function startExamTimer() {
+    stopExamTimer();
+    updateExamTimer();
+    examTimerId = setInterval(updateExamTimer, 1000);
+  }
+
+  function stopExamTimer() {
+    if (examTimerId) { clearInterval(examTimerId); examTimerId = null; }
+  }
+
+  function updateExamTimer() {
+    var el = $('#examTimer');
+    if (!el) return;
+    var st = state.exam;
+    if (!st || st.submitted) { el.textContent = '—'; return; }
+    var sec = (Date.now() - st.sess.startedAt) / 1000;
+    el.textContent = EX.fmtDuration(sec);
+  }
+
+  function letterOf(i) { return i == null ? '—' : String.fromCharCode(65 + i); }
+
+  function answerLetter(q, i) {
+    if (i == null || !q || !q.opts || !q.opts[i]) return letterOf(i);
+    var m = String(q.opts[i]).match(/^(T|F)\./);
+    return m ? m[1] : letterOf(i);
+  }
+
+  function lookupKey(token) {
+    var w = token.toLowerCase().replace(/[’']s$/, '');
+    if (BY_LOWER.has(w)) return BY_LOWER.get(w);
+    var tries = [w.replace(/ies$/, 'y'), w.replace(/ied$/, 'y'), w.replace(/ing$/, ''),
+      w.replace(/ed$/, ''), w.replace(/es$/, ''), w.replace(/s$/, ''), w.replace(/ly$/, '')];
+    for (var i = 0; i < tries.length; i++) {
+      if (tries[i] && BY_LOWER.has(tries[i])) return BY_LOWER.get(tries[i]);
+    }
+    return null;
+  }
+
+  function linkWords(text) {
+    var parts = text.split(/([A-Za-z][A-Za-z'’\-]*)/);
+    return parts.map(function (seg) {
+      if (!/^[A-Za-z]/.test(seg)) return esc(seg).replace(/\n/g, '<br>');
+      var key = lookupKey(seg);
+      if (!key) return esc(seg);
+      return '<button type="button" class="wlook" data-open="' + esc(key) + '">' + esc(seg) + '</button>';
+    }).join('');
+  }
+
+  function passageHTML(p, activeIndex) {
+    var raw = p.passage || '';
+    var paras;
+    if (p.type === 'cloze') {
+      paras = raw.split(/\n{2,}/).map(function (para) {
+        var segs = para.split(/(__\(\d+\)__)/);
+        return '<p>' + segs.map(function (seg) {
+          var m = seg.match(/^__\((\d+)\)__$/);
+          if (!m) return linkWords(seg);
+          var n = Number(m[1]);
+          return '<span class="cloze-blank' + (n === activeIndex + 1 ? ' active' : '') +
+            '" data-blank="' + n + '">' + n + '</span>';
+        }).join('') + '</p>';
+      });
+    } else {
+      paras = raw.split(/\n{2,}/).map(function (para) { return '<p>' + linkWords(para) + '</p>'; });
+    }
+    return paras.join('');
+  }
+
+  function optionHTML(i, text, chosen, correct, reveal) {
+    var cls = 'q-opt';
+    var raw = String(text);
+    var m = raw.match(/^([A-G]|T|F)\.\s*/);
+    var label = m ? raw.slice(m[0].length) : raw;
+    var letter = m ? m[1] : letterOf(i);
+    if (chosen === i) cls += ' selected';
+    if (reveal) {
+      if (i === correct) cls += ' correct';
+      else if (chosen === i) cls += ' wrong';
+    }
+    return '<button class="' + cls + '" data-opt="' + i + '">' +
+      '<span class="letter">' + esc(letter) + '</span><span>' + esc(label) + '</span></button>';
+  }
+
+  function answerSheetHTML(p, sess) {
+    var answered = 0;
+    p.questions.forEach(function (_, i) { if (sess.answers[i] != null) answered++; });
+    return '<div class="answer-sheet"><div class="as-head"><span>答题卡</span>' +
+      '<span class="tiny faint">' + answered + ' / ' + p.questions.length + ' 已答</span></div>' +
+      '<div class="as-chips">' + p.questions.map(function (_, i) {
+        var cls = 'as-chip';
+        if (i === sess.index) cls += ' current';
+        if (sess.answers[i] != null) cls += ' done';
+        if (sess.flags[i]) cls += ' flag';
+        return '<button class="' + cls + '" data-jump="' + i + '">' + (i + 1) + '</button>';
+      }).join('') + '</div></div>';
+  }
+
+  function renderExam() {
+    var st = state.exam;
+    if (!st) { state.view = 'papers'; return renderPapers(); }
+    if (st.submitted) return examResultHTML(st);
+
+    var p = st.paper, sess = st.sess;
+    var q = p.questions[sess.index];
+    var tm = paperTypeMeta(p.type);
+    var chosen = sess.answers[sess.index];
+    var reveal = st.sess.mode === 'practice' && chosen != null;
+    var flagged = !!sess.flags[sess.index];
+
+    var html = '<div class="exam-bar">' +
+      '<button class="btn btn-sm btn-ghost" data-act="exit-exam">← 返回</button>' +
+      '<div class="eb-title">' + esc(p.title) + ' <span class="badge" data-tone="' + tm.color + '">' + tm.short + '</span></div>' +
+      '<div class="eb-timer" id="examTimer">' + EX.fmtDuration((Date.now() - sess.startedAt) / 1000) + '</div>' +
+      '<button class="btn btn-primary btn-sm" data-act="submit-exam">交卷</button>' +
+    '</div>';
+
+    html += '<div class="exam-grid">' +
+      '<aside class="passage-pane">' +
+        '<div class="pp-head"><span>文章</span><div class="pp-tools">' +
+          (p.passageZh ? '<button class="btn btn-sm btn-ghost" data-act="toggle-zh">' + (st.showZh ? '隐藏中译' : '中译') + '</button>' : '') +
+          '<button class="btn btn-sm btn-ghost" data-act="toggle-passage">' + (st.showPassage ? '收起' : '展开') + '</button>' +
+        '</div></div>' +
+        (st.showPassage ? '<div class="passage" id="examPassage">' + passageHTML(p, sess.index) + '</div>' +
+          (st.showZh && p.passageZh ? '<div class="passage-zh" id="examZh">' + esc(p.passageZh) + '</div>' : '')
+          : '<div class="passage-folded"><button class="btn btn-sm" data-act="toggle-passage">显示文章</button></div>') +
+      '</aside>' +
+      '<section class="q-pane" id="qPane">' +
+        '<div class="q-top"><span class="q-counter">第 ' + (sess.index + 1) + ' / ' + p.questions.length + ' 题</span>' +
+          '<button class="btn btn-sm btn-ghost" data-act="flag">' + (flagged ? '★ 已标记' : '☆ 标记') + '</button></div>' +
+        '<div class="q-stem">' + esc(q.q) + '</div>' +
+        '<div class="q-opts">' + q.opts.map(function (o, i) {
+          return optionHTML(i, o, chosen, q.ans, reveal);
+        }).join('') + '</div>' +
+        (reveal ? '<div class="q-feedback ' + (chosen === q.ans ? 'ok' : 'bad') + '">' +
+          '<div class="qf-head">' + (chosen === q.ans ? '✓ 回答正确' : '✗ 回答错误') +
+          ' · 正确答案 ' + answerLetter(q, q.ans) + '</div>' +
+          (q.explain ? '<div class="qf-body">' + esc(q.explain) + '</div>' : '') + '</div>' : '') +
+        '<div class="q-foot">' +
+          '<button class="btn btn-sm" data-act="prev"' + (sess.index === 0 ? ' disabled' : '') + '>上一题</button>' +
+          '<span class="tiny faint">' + (sess.mode === 'practice' ? '练习模式 · 即时解析' : '模考模式 · 交卷后批改') + '</span>' +
+          '<button class="btn btn-sm" data-act="next"' + (sess.index === p.questions.length - 1 ? ' disabled' : '') + '>下一题</button>' +
+        '</div>' +
+        answerSheetHTML(p, sess) +
+      '</section>' +
+    '</div>';
+
+    return html;
+  }
+
+  function examResultHTML(st) {
+    var p = st.paper, r = st.result;
+    var dur = st.attempt ? st.attempt.duration : (Date.now() - st.sess.startedAt) / 1000;
+    var wrong = r.details.filter(function (d) { return !d.ok; });
+    var list = st.onlyWrong ? wrong : r.details;
+    var tm = paperTypeMeta(p.type);
+
+    var html = '<div class="exam-bar">' +
+      '<button class="btn btn-sm btn-ghost" data-act="back-papers">← 题库</button>' +
+      '<div class="eb-title">' + esc(p.title) + ' <span class="badge" data-tone="' + tm.color + '">' + tm.short + '</span></div>' +
+      '<div class="tiny faint">已交卷</div>' +
+    '</div>';
+
+    html += '<div class="result-hero card">' +
+      '<div class="score-ring"><div class="score-num">' + r.score + '</div><div class="score-full">/ ' + r.fullScore + '</div></div>' +
+      '<div class="result-main">' +
+        '<div class="result-title">' + (r.accuracy >= 0.8 ? '做得不错。' : r.accuracy >= 0.6 ? '还有提升空间。' : '这套值得二刷。') + '</div>' +
+        '<div class="result-kpis">' +
+          '<span>正确 <b>' + r.correct + '</b> / ' + r.total + '</span>' +
+          '<span>正确率 <b>' + (r.accuracy * 100).toFixed(1) + '%</b></span>' +
+          '<span>用时 <b>' + EX.fmtDuration(dur) + '</b></span>' +
+          '<span>' + (st.attempt ? (st.attempt.mode === 'practice' ? '练习模式' : '模考模式') : '') + '</span>' +
+        '</div>' +
+        '<div class="result-actions">' +
+          '<button class="btn btn-sm" data-act="toggle-wrong">' + (st.onlyWrong ? '显示全部' : '只看错题') + '</button>' +
+          '<button class="btn btn-sm" data-act="retry-paper">再练一次</button>' +
+          '<button class="btn btn-sm btn-primary" data-act="back-papers">返回题库</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+
+    html += '<details class="result-passage"><summary>查看原文' + (p.passageZh ? '与中译' : '') + '</summary>' +
+      '<div class="passage">' + passageHTML(p, -1) + '</div>' +
+      (p.passageZh ? '<div class="passage-zh">' + esc(p.passageZh) + '</div>' : '') + '</details>';
+
+    html += '<div class="review-head"><h2>逐题解析</h2><span class="tiny faint">' + list.length + ' 题</span></div>';
+    html += '<div class="review-list">' + list.map(function (d) {
+      return '<div class="review-card" id="review-' + d.n + '">' +
+        '<div class="rc-head"><span class="rc-n">' + d.n + '</span>' +
+          '<span class="badge" data-tone="' + (d.ok ? 'success' : 'danger') + '">' + (d.ok ? '正确' : '错误') + '</span>' +
+          '<span class="rc-ans tiny faint">你的答案 ' + answerLetter(d.q, d.chosen) + ' · 正确答案 ' + answerLetter(d.q, d.correct) + '</span></div>' +
+        '<div class="rc-q">' + esc(d.q.q) + '</div>' +
+        '<div class="rc-opts">' + d.q.opts.map(function (o, i) {
+          return optionHTML(i, o, d.chosen, d.correct, true);
+        }).join('') + '</div>' +
+        (d.q.explain ? '<div class="rc-explain"><b>解析</b> ' + esc(d.q.explain) + '</div>' : '') +
+      '</div>';
+    }).join('') + '</div>';
+
+    return html;
+  }
+
+  function examChoose(i) {
+    var st = state.exam;
+    if (!st || st.submitted) return;
+    st.sess.answers[st.sess.index] = i;
+    EX.saveSession(st.sess);
+    renderKeepScroll();
+  }
+
+  function examJump(i) {
+    var st = state.exam;
+    if (!st || st.submitted) return;
+    st.sess.index = Math.max(0, Math.min(st.paper.questions.length - 1, i));
+    EX.saveSession(st.sess);
+    renderKeepScroll();
+    var q = $('#qPane');
+    if (q && window.innerWidth < 900) q.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function examFlag() {
+    var st = state.exam;
+    if (!st || st.submitted) return;
+    st.sess.flags[st.sess.index] = !st.sess.flags[st.sess.index];
+    EX.saveSession(st.sess);
+    renderKeepScroll();
+  }
+
+  function examSubmit() {
+    var st = state.exam;
+    if (!st || st.submitted) return;
+    var unanswered = st.paper.questions.filter(function (_, i) { return st.sess.answers[i] == null; }).length;
+    if (unanswered) {
+      $('#modalRoot').innerHTML = '<div class="modal-mask"><div class="modal" role="dialog" aria-modal="true" aria-label="确认交卷">' +
+        '<div class="modal-head"><h3>还有 ' + unanswered + ' 题未作答</h3><button class="icon-btn" data-close="1">✕</button></div>' +
+        '<div class="modal-body"><p class="muted" style="margin:0">现在交卷会按已作答的题目计分，未作答按错误计算。也可以回去继续答完。</p></div>' +
+        '<div class="modal-foot"><button class="btn" data-close="1">继续答题</button>' +
+        '<button class="btn btn-primary" data-act="confirm-submit">仍然交卷</button></div></div></div>';
+      return;
+    }
+    doSubmitExam();
+  }
+
+  function doSubmitExam() {
+    var st = state.exam;
+    if (!st || st.submitted) return;
+    var result = EX.grade(st.paper, st.sess.answers);
+    var attempt = EX.saveAttempt(st.paper, st.sess, result);
+    st.submitted = true;
+    st.result = result;
+    st.attempt = attempt;
+    closeModal();
+    stopExamTimer();
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function examExit() {
+    var st = state.exam;
+    if (!st) return;
+    // 进度会保留，直接退出，不再弹原生确认框
+    stopExamTimer();
+    state.view = 'papers';
+    state.exam = null;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function renderKeepScroll() {
+    var y = window.scrollY;
+    var ps = $('#examPassage') ? $('#examPassage').scrollTop : 0;
+    render();
+    window.scrollTo(0, y);
+    var np = $('#examPassage');
+    if (np) np.scrollTop = ps;
+  }
+
+  function showAttempt(id) {
+    var a = EX.attempts().filter(function (x) { return x.id === id; })[0];
+    if (!a) return;
+    var p = EX.get(a.paperId);
+    if (!p) return;
+    state.view = 'exam';
+    state.exam = {
+      paper: p,
+      sess: { paperId: p.id, mode: a.mode, answers: a.answers, flags: {}, index: 0, startedAt: a.startedAt },
+      submitted: true, result: EX.grade(p, a.answers), attempt: a,
+      onlyWrong: false, showZh: false, showPassage: false
+    };
+    stopExamTimer();
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function showWrong(paperId, n) {
+    var a = EX.attempts().filter(function (x) { return x.paperId === paperId; })[0];
+    if (!a) return;
+    showAttempt(a.id);
+    if (n) {
+      setTimeout(function () {
+        var el = document.getElementById('review-' + n);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 120);
+    }
+  }
+
   /* ---------- 词根 ---------- */
 
   function renderRoots() {
@@ -1131,16 +1704,22 @@
   var VIEWS = {
     today: renderToday,
     library: renderLibrary,
+    papers: renderPapers,
+    exam: renderExam,
     roots: renderRoots,
     stats: renderStats
   };
 
   function render() {
     var top = window.scrollY;
+    document.body.classList.toggle('exam-mode', state.view === 'exam');
     $('#view').innerHTML = VIEWS[state.view]();
+    var activeView = state.view === 'exam' ? 'papers' : state.view;
     $$('#tabs button').forEach(function (b) {
-      b.setAttribute('aria-selected', b.dataset.view === state.view);
+      b.setAttribute('aria-selected', b.dataset.view === activeView);
     });
+    if (state.view === 'exam' && state.exam && !state.exam.submitted) startExamTimer();
+    else stopExamTimer();
     $('#streakNum').textContent = S.get().stats.streak || 0;
     if (state.view === 'library') {
       var inp = $('#libSearch');
@@ -1154,10 +1733,22 @@
   }
 
   function go(view) {
+    if (state.view === 'exam' && view !== 'exam') {
+      if (state.exam && !state.exam.submitted && !Object.keys(state.exam.sess.answers || {}).length) {
+        EXAM_clearEmptySession();
+      }
+      stopExamTimer();
+      state.exam = null;
+    }
     state.view = view;
     state.session = null;
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function EXAM_clearEmptySession() {
+    var sess = EX.getSession();
+    if (sess && !Object.keys(sess.answers || {}).length) EX.clearSession();
   }
 
   function bindGlobal() {
@@ -1206,6 +1797,17 @@
         }
         if (a === 'reveal') reveal();
         if (a === 'end') { state.session = null; render(); }
+        if (a === 'exit-exam') { examExit(); return; }
+        if (a === 'submit-exam') { examSubmit(); return; }
+        if (a === 'confirm-submit') { doSubmitExam(); return; }
+        if (a === 'flag') { examFlag(); return; }
+        if (a === 'prev') { examJump(state.exam.sess.index - 1); return; }
+        if (a === 'next') { examJump(state.exam.sess.index + 1); return; }
+        if (a === 'toggle-zh') { state.exam.showZh = !state.exam.showZh; renderKeepScroll(); return; }
+        if (a === 'toggle-passage') { state.exam.showPassage = !state.exam.showPassage; renderKeepScroll(); return; }
+        if (a === 'back-papers') { stopExamTimer(); state.exam = null; state.view = 'papers'; render(); window.scrollTo(0, 0); return; }
+        if (a === 'retry-paper') { var _p = state.exam.paper; var _m = state.exam.attempt ? state.exam.attempt.mode : 'practice'; startPaper(_p.id, _m); return; }
+        if (a === 'toggle-wrong') { state.exam.onlyWrong = !state.exam.onlyWrong; render(); return; }
         if (a === 'restart') { state.session = null; startSession(); }
         if (a === 'close-drawer') closeDrawer();
         return;
@@ -1231,6 +1833,62 @@
         render();
         return;
       }
+
+      var ptab = t.closest('[data-ptab]');
+      if (ptab) {
+        state.paperTab = ptab.dataset.ptab;
+        render();
+        return;
+      }
+
+      var ptype = t.closest('[data-ptype]');
+      if (ptype) {
+        state.paperFilter.type = ptype.dataset.ptype;
+        render();
+        return;
+      }
+
+      var paperEl = t.closest('[data-paper]');
+      if (paperEl) { openPaperStart(paperEl.dataset.paper); return; }
+
+      var startEl = t.closest('[data-start]');
+      if (startEl) {
+        var modal = t.closest('.paper-start');
+        var target = modal && modal.dataset.paperId;
+        if (target) startPaper(target, startEl.dataset.start);
+        return;
+      }
+
+      var resumeEl = t.closest('[data-resume]');
+      if (resumeEl) { resumePaper(); return; }
+
+      var discardEl = t.closest('[data-discard]');
+      if (discardEl) {
+        if (confirm('放弃这套未完成的练习？')) {
+          EX.clearSession();
+          render();
+        }
+        return;
+      }
+
+      var attemptEl = t.closest('[data-attempt]');
+      if (attemptEl) { showAttempt(attemptEl.dataset.attempt); return; }
+
+      var wrongEl = t.closest('[data-wrong]');
+      if (wrongEl) {
+        var parts = wrongEl.dataset.wrong.split('|');
+        showWrong(parts[0], Number(parts[1]));
+        return;
+      }
+
+      var optEl = t.closest('[data-opt]');
+      if (optEl && state.view === 'exam' && state.exam && !state.exam.submitted) {
+        examChoose(Number(optEl.dataset.opt));
+        return;
+      }
+
+      var jumpEl = t.closest('[data-jump]');
+      if (jumpEl) { examJump(Number(jumpEl.dataset.jump)); return; }
 
       var gotoEl = t.closest('[data-goto]');
       if (gotoEl) {
@@ -1270,6 +1928,7 @@
       }
       if (t.id === 'libBand') { state.lib.band = t.value; state.lib.limit = 90; render(); }
       if (t.id === 'libPos') { state.lib.pos = t.value; state.lib.limit = 90; render(); }
+      if (t.id === 'paperYear') { state.paperFilter.year = t.value; render(); }
       if (t.id === 'libSort') { state.lib.sort = t.value; render(); }
       if (t.id === 'libLetter') { state.lib.letter = t.value; state.lib.limit = 90; render(); }
       if (t.id === 'setTheme') {
@@ -1368,6 +2027,24 @@
     document.addEventListener('keydown', function (e) {
       if (e.target.matches('input, textarea, select')) return;
       if (e.key === 'Escape') { closeModal(); closeDrawer(); return; }
+      if (state.view === 'exam' && state.exam && !state.exam.submitted) {
+        var st = state.exam;
+        if (/^[1-9]$/.test(e.key)) {
+          var oi = Number(e.key) - 1;
+          if (oi < st.paper.questions[st.sess.index].opts.length) { e.preventDefault(); examChoose(oi); }
+          return;
+        }
+        if (/^[a-gA-G]$/.test(e.key)) {
+          var li = e.key.toUpperCase().charCodeAt(0) - 65;
+          if (li < st.paper.questions[st.sess.index].opts.length) { e.preventDefault(); examChoose(li); }
+          return;
+        }
+        if (e.key === 'ArrowRight') { e.preventDefault(); examJump(st.sess.index + 1); return; }
+        if (e.key === 'ArrowLeft') { e.preventDefault(); examJump(st.sess.index - 1); return; }
+        if (e.key === 'f' || e.key === 'F') { e.preventDefault(); examFlag(); return; }
+        if (e.key === 'Enter') { e.preventDefault(); if (st.sess.index < st.paper.questions.length - 1) examJump(st.sess.index + 1); return; }
+        return;
+      }
       if (!state.session) return;
       if (e.code === 'Space') { e.preventDefault(); reveal(); return; }
       if (['1', '2', '3', '4'].indexOf(e.key) !== -1 && state.session.revealed) {
