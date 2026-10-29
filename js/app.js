@@ -1032,7 +1032,7 @@
     state.exam = {
       paper: p, sess: sess, submitted: false, result: null, attempt: null,
       onlyWrong: false, showZh: false,
-      showPassage: p.type !== 'reading' || window.innerWidth > 820
+      showPassage: true
     };
     closeModal();
     render();
@@ -1049,7 +1049,7 @@
     state.exam = {
       paper: p, sess: sess, submitted: false, result: null, attempt: null,
       onlyWrong: false, showZh: false,
-      showPassage: p.type !== 'reading' || window.innerWidth > 820
+      showPassage: true
     };
     closeModal();
     render();

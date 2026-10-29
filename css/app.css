@@ -1416,7 +1416,7 @@ html[data-theme="dark"] .seg-level button[aria-pressed="true"] { color: #0e1512;
 
 /* 练习界面 */
 .exam-mode .topbar { display: none; }
-.exam-mode .app { padding-top: 0; }
+.exam-mode .app { max-width: 1360px; padding-top: 0; }
 
 .exam-bar {
   position: sticky; top: 0; z-index: 45;
@@ -1438,8 +1438,8 @@ html[data-theme="dark"] .seg-level button[aria-pressed="true"] { color: #0e1512;
 
 .exam-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.06fr) minmax(0, .94fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.32fr) minmax(0, .92fr);
+  gap: 18px;
   align-items: start;
   padding-bottom: 30px;
 }
@@ -1460,12 +1460,12 @@ html[data-theme="dark"] .seg-level button[aria-pressed="true"] { color: #0e1512;
 }
 .pp-tools { display: flex; gap: 4px; text-transform: none; letter-spacing: 0; }
 .passage {
-  padding: 18px 22px 22px;
+  padding: 20px 26px 24px;
   max-height: calc(100vh - 150px);
   overflow-y: auto;
   font-family: var(--font-serif);
-  font-size: 15.5px;
-  line-height: 1.85;
+  font-size: 18px;
+  line-height: 1.9;
 }
 .passage p { margin: 0 0 14px; }
 .passage p:last-child { margin-bottom: 0; }
@@ -1656,7 +1656,7 @@ html[data-theme="dark"] .seg-level button[aria-pressed="true"] { color: #0e1512;
 @media (max-width: 900px) {
   .exam-grid { grid-template-columns: 1fr; }
   .passage-pane { position: static; }
-  .passage { max-height: 38vh; }
+  .passage { max-height: 40vh; font-size: 16.5px; line-height: 1.85; padding: 16px 20px 20px; }
   .paper-hero { flex-direction: column; }
   .ana-grid { grid-template-columns: 1fr; }
   .ana-wide { grid-column: auto; }
