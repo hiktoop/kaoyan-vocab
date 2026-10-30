@@ -34,7 +34,8 @@
   ]);
 
   var MORPH_CACHE = new Map();
-  var WORDS = [];            // 当前展示的词（可能已过滤基础虚词）
+  var POOL = [];             // 去掉基础虚词后的全部词（包含已隐藏）
+  var WORDS = [];            // 当前展示的词（可能已过滤基础虚词和隐藏词）
   var BY_WORD = new Map();   // word -> 词条
   var BY_LOWER = new Map();  // lower -> 原始词条 key
   var FAMILY = {};           // rootKey -> [word]
@@ -71,17 +72,22 @@
   function buildIndexes() {
     var hideBasic = S.getSettings().hideBasic !== false;
     var removed = S.get().removed || {};
-    WORDS = ALL_WORDS.filter(function (w) {
-      if (removed[w.w]) return false;
+    POOL = ALL_WORDS.filter(function (w) {
       return !(hideBasic && BASIC.has(w.w.toLowerCase()));
     });
+    WORDS = POOL.filter(function (w) { return !removed[w.w]; });
 
+    // 已隐藏的词也要能打开详情，所以索引建在 POOL 上
     BY_WORD = new Map();
     BY_LOWER = new Map();
-    WORDS.forEach(function (w, i) {
-      w._i = i;                 // 在当前词表中的序号（= 高频排名）
+    POOL.forEach(function (w, i) {
+      w._full = i;              // 包含隐藏词时的序号
+      w._i = null;              // 可见序号，隐藏后清空
       BY_WORD.set(w.w, w);
       BY_LOWER.set(w.w.toLowerCase(), w.w);
+    });
+    WORDS.forEach(function (w, i) {
+      w._i = i;                 // 未隐藏词表里的连续序号
     });
 
     FAMILY = {};
@@ -109,7 +115,7 @@
   var state = {
     view: 'today',
     session: null,
-    lib: { q: '', status: 'all', cefr: 'all', band: 'all', pos: 'all', letter: 'all', sort: 'freq', limit: 90 },
+    lib: { q: '', status: 'all', cefr: 'all', band: 'all', pos: 'all', hidden: 'visible', letter: 'all', sort: 'freq', limit: 90 },
     rootKey: null,
     rootQuery: '',
     paperTab: 'library',
@@ -150,6 +156,10 @@
   function fmtNum(n) {
     if (n >= 10000) return (n / 1000).toFixed(1).replace('.0', '') + 'k';
     return String(n);
+  }
+
+  function rankOf(w) {
+    return w._i != null ? w._i + 1 : (w._full != null ? w._full + 1 : '—');
   }
 
   function cleanPhonetic(p) {
@@ -495,7 +505,7 @@
       '</div>' +
       '<div class="word-meta">' +
         '<span class="badge" data-tone="' + band.tone + '">' + band.label + ' · 词频 ' + w.f + '</span>' +
-        '<span class="badge">#' + (w._i + 1) + '</span>' +
+        '<span class="badge">#' + rankOf(w) + '</span>' +
         (posText(w, 3) ? '<span class="badge" data-tone="accent" title="' + esc(posList(w).map(function (p) { return POS_CN[p] || p; }).join('、')) + '">' + esc(posText(w, 3)) + '</span>' : '') +
         (w.cefr ? '<span class="badge">CEFR ' + w.cefr + '</span>' : '') +
         (w.acad ? '<span class="badge">学术词汇</span>' : '') +
@@ -692,8 +702,11 @@
     var f = state.lib;
     var q = f.q.trim().toLowerCase();
     var out = [];
-    for (var i = 0; i < WORDS.length; i++) {
-      var w = WORDS[i];
+    var pool = f.hidden === 'visible' ? WORDS : POOL;
+    for (var i = 0; i < pool.length; i++) {
+      var w = pool[i];
+      if (f.hidden === 'hidden' && !S.isRemoved(w.w)) continue;
+      if (f.hidden === 'visible' && S.isRemoved(w.w)) continue;
       if (q && w.w.toLowerCase().indexOf(q) === -1 && w.t.indexOf(q) === -1) continue;
       if (f.cefr !== 'all' && w.cefr !== f.cefr) continue;
       if (f.pos === 'other') {
@@ -785,6 +798,11 @@
         chip('due', '待复习', f.status) + chip('known', '已掌握', f.status) +
         chip('star', '收藏', f.status) + chip('note', '有笔记', f.status) + chip('noroot', '未归类', f.status) +
         '<span style="flex:1"></span>' +
+        '<select class="select" id="libHidden" aria-label="隐藏状态" style="padding:4px 8px;font-size:12px">' +
+          option('visible', '未隐藏', f.hidden) +
+          option('hidden', '已隐藏', f.hidden) +
+          option('all', '全部词', f.hidden) +
+        '</select>' +
         '<select class="select" id="libLetter" style="padding:4px 8px;font-size:12px">' +
           option('all', '首字母', f.letter) + letters.map(function (x) { return option(x, x.toUpperCase(), f.letter); }).join('') +
         '</select>' +
@@ -810,18 +828,21 @@
   function rowHTML(w) {
     var rec = S.word(w.w);
     var lv = rec && rec.first ? rec.lv : 0;
+    var hidden = S.isRemoved(w.w);
     return '<div class="list-row" data-open="' + esc(w.w) + '" tabindex="0" role="button">' +
-      '<span class="rank">' + (w._i + 1) + '</span>' +
+      '<span class="rank">' + rankOf(w) + '</span>' +
       '<span><span class="w">' + esc(w.w) + '</span>' +
         (cleanPhonetic(w.ph) ? '<div class="ph">/' + esc(cleanPhonetic(w.ph)) + '/</div>' : '') + '</span>' +
       '<span class="tr">' + (posText(w, 2) ? '<span class="pos-tag">' + esc(posText(w, 2)) + '</span>' : '') + esc(w.t) + '</span>' +
       '<span class="freq">' + fmtNum(w.f) + '</span>' +
       '<span class="lv-cell">' + pips(lv) +
-        '<button class="row-review" data-quick="' + esc(w.w) + '" title="标记已复习" aria-label="标记 ' + esc(w.w) + ' 已复习">✓</button>' +
+        (hidden ? '' : '<button class="row-review" data-quick="' + esc(w.w) + '" title="标记已复习" aria-label="标记 ' + esc(w.w) + ' 已复习">✓</button>') +
       '</span>' +
       '<span class="tiny ' + (rec && rec.due && rec.due <= S.todayStr() ? '' : 'faint') + '" style="text-align:right">' +
-        (rec && rec.first ? dueLabel(rec) : (S.starred(w.w) ? '★' : '—')) + '</span>' +
-      '<button class="row-del" data-del="' + esc(w.w) + '" title="从词库移除" aria-label="从词库移除 ' + esc(w.w) + '">×</button>' +
+        (hidden ? '<span class="badge" data-tone="warning">已隐藏</span>' : (rec && rec.first ? dueLabel(rec) : (S.starred(w.w) ? '★' : '—'))) + '</span>' +
+      (hidden
+        ? '<button class="row-restore" data-unhide="' + esc(w.w) + '" title="恢复" aria-label="恢复 ' + esc(w.w) + '">↩</button>'
+        : '<button class="row-del" data-del="' + esc(w.w) + '" title="从词库隐藏" aria-label="隐藏 ' + esc(w.w) + '">×</button>') +
     '</div>';
   }
 
@@ -1560,7 +1581,7 @@
       '<div class="word-meta" style="margin-top:6px">' +
         (cleanPhonetic(w.ph) ? '<span class="phon">/' + esc(cleanPhonetic(w.ph)) + '/</span>' : '') +
         '<span class="badge" data-tone="' + band.tone + '">' + band.label + ' ' + w.f + '</span>' +
-        '<span class="badge">#' + (w._i + 1) + '</span>' +
+        '<span class="badge">#' + rankOf(w) + '</span>' +
         (w.cefr ? '<span class="badge">CEFR ' + w.cefr + '</span>' : '') +
       '</div></div>' +
       '<div style="display:flex;gap:6px">' +
@@ -1620,9 +1641,14 @@
     html += '<div class="detail-block"><h4>我的笔记</h4>' +
       '<textarea class="note-area" id="noteArea" placeholder="记下你的联想、易混词、真题句子…">' + esc(S.note(w.w)) + '</textarea></div>';
 
+    var isHidden = S.isRemoved(w.w);
     html += '<div class="detail-block" style="border-top:1px solid var(--border);padding-top:14px">' +
-      '<button class="btn btn-sm" data-del="' + esc(w.w) + '" style="color:var(--danger)">从词库移除「' + esc(w.w) + '」</button>' +
-      '<div class="tiny faint" style="margin-top:6px">只从当前词库隐藏，学习记录会保留；可在 设置 → 数据 里恢复。</div></div>';
+      (isHidden
+        ? '<button class="btn btn-sm" data-unhide="' + esc(w.w) + '">恢复「' + esc(w.w) + '」到词库</button>' +
+          '<div class="tiny faint" style="margin-top:6px">这个词当前处于隐藏状态，恢复后会重新出现在词库和计划里。</div>'
+        : '<button class="btn btn-sm" data-del="' + esc(w.w) + '" style="color:var(--danger)">从词库隐藏「' + esc(w.w) + '」</button>' +
+          '<div class="tiny faint" style="margin-top:6px">只从当前词库隐藏，学习记录会保留；可在词库筛选「已隐藏」里恢复。</div>') +
+    '</div>';
 
     $('#drawerBody').innerHTML = html;
     $('#drawer').classList.add('open');
@@ -1632,18 +1658,27 @@
     $('#drawerBody').scrollTop = 0;
   }
 
-  function deleteWord(word) {
+  function hideWord(word) {
     if (!word) return;
     S.removeFromLibrary(word);
     buildIndexes();
     closeDrawer();
     render();
-    toast('已从词库移除「' + word + '」', '撤销', function () {
+    toast('已隐藏「' + word + '」', '撤销', function () {
       S.restoreToLibrary(word);
       buildIndexes();
       render();
       toast('已恢复「' + word + '」');
     });
+  }
+
+  function restoreHidden(word) {
+    if (!word) return;
+    S.restoreToLibrary(word);
+    buildIndexes();
+    closeDrawer();
+    render();
+    toast('已恢复「' + word + '」');
   }
 
   function quickReview(word) {
@@ -1716,7 +1751,7 @@
             '<button class="btn btn-sm" id="exportBtn">导出备份 JSON</button>' +
             '<button class="btn btn-sm" id="importBtn">导入备份</button>' +
             '<button class="btn btn-sm" id="resetBtn" style="color:var(--danger)">清空学习记录</button>' +
-            '<button class="btn btn-sm" id="restoreRemovedBtn">恢复已移除的词（' + S.removedCount() + '）</button>' +
+            '<button class="btn btn-sm" id="restoreRemovedBtn">恢复已隐藏的词（' + S.removedCount() + '）</button>' +
             '<input type="file" id="importFile" accept=".json,application/json" style="display:none">' +
           '</div>' +
           '<div class="section-title" style="margin:20px 0 6px"><h2>快捷键</h2></div>' +
@@ -1814,11 +1849,19 @@
         return;
       }
 
+      var unhide = t.closest('[data-unhide]');
+      if (unhide) {
+        e.preventDefault();
+        e.stopPropagation();
+        restoreHidden(unhide.dataset.unhide);
+        return;
+      }
+
       var del = t.closest('[data-del]');
       if (del) {
         e.preventDefault();
         e.stopPropagation();
-        deleteWord(del.dataset.del);
+        hideWord(del.dataset.del);
         return;
       }
 
@@ -1972,6 +2015,7 @@
       }
       if (t.id === 'libBand') { state.lib.band = t.value; state.lib.limit = 90; render(); }
       if (t.id === 'libPos') { state.lib.pos = t.value; state.lib.limit = 90; render(); }
+      if (t.id === 'libHidden') { state.lib.hidden = t.value; state.lib.limit = 90; render(); }
       if (t.id === 'paperYear') { state.paperFilter.year = t.value; render(); }
       if (t.id === 'libSort') { state.lib.sort = t.value; render(); }
       if (t.id === 'libLetter') { state.lib.letter = t.value; state.lib.limit = 90; render(); }
@@ -2040,7 +2084,7 @@
         buildIndexes();
         closeModal();
         render();
-        toast(n ? '已恢复 ' + n + ' 个词' : '没有需要恢复的词');
+        toast(n ? '已恢复 ' + n + ' 个隐藏词' : '没有需要恢复的词');
       }
       if (e.target.id === 'resetBtn') {
         if (confirm('确定清空全部学习记录？此操作不可撤销，建议先导出备份。')) {
