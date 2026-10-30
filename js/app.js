@@ -724,9 +724,32 @@
     return out;
   }
 
+  var libObserver = null;
+
+  function loadMoreLibrary() {
+    if (state.view !== 'library' || state.lib.loading) return;
+    if (state.lib.limit >= (state.lib.total || 0)) return;
+    state.lib.loading = true;
+    state.lib.limit += 120;
+    render();
+    setTimeout(function () { state.lib.loading = false; }, 350);
+  }
+
+  function setupLibObserver() {
+    if (libObserver) { libObserver.disconnect(); libObserver = null; }
+    if (state.view !== 'library' || !('IntersectionObserver' in global)) return;
+    var el = $('#libSentinel');
+    if (!el) return;
+    libObserver = new IntersectionObserver(function (entries) {
+      if (entries.some(function (e) { return e.isIntersecting; })) loadMoreLibrary();
+    }, { rootMargin: '400px' });
+    libObserver.observe(el);
+  }
+
   function renderLibrary() {
     var f = state.lib;
     var list = filteredWords();
+    state.lib.total = list.length;
     var shown = list.slice(0, f.limit);
     var letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
 
@@ -770,7 +793,7 @@
       (shown.length ? shown.map(rowHTML).join('') :
         '<div class="empty">没有匹配的单词，试试换个筛选条件。</div>') +
       (list.length > shown.length
-        ? '<div class="pager"><button class="btn btn-sm" id="loadMore">加载更多（还有 ' + (list.length - shown.length) + ' 词）</button></div>'
+        ? '<div class="lib-sentinel" id="libSentinel">继续向下滚动，自动加载更多… <span class="faint">' + shown.length + ' / ' + list.length + '</span></div>'
         : (list.length ? '<div class="pager faint">已显示全部 ' + list.length + ' 词</div>' : '')) +
       '</div>';
     return html;
@@ -793,7 +816,9 @@
         (cleanPhonetic(w.ph) ? '<div class="ph">/' + esc(cleanPhonetic(w.ph)) + '/</div>' : '') + '</span>' +
       '<span class="tr">' + (posText(w, 2) ? '<span class="pos-tag">' + esc(posText(w, 2)) + '</span>' : '') + esc(w.t) + '</span>' +
       '<span class="freq">' + fmtNum(w.f) + '</span>' +
-      '<span>' + pips(lv) + '</span>' +
+      '<span class="lv-cell">' + pips(lv) +
+        '<button class="row-review" data-quick="' + esc(w.w) + '" title="标记已复习" aria-label="标记 ' + esc(w.w) + ' 已复习">✓</button>' +
+      '</span>' +
       '<span class="tiny ' + (rec && rec.due && rec.due <= S.todayStr() ? '' : 'faint') + '" style="text-align:right">' +
         (rec && rec.first ? dueLabel(rec) : (S.starred(w.w) ? '★' : '—')) + '</span>' +
       '<button class="row-del" data-del="' + esc(w.w) + '" title="从词库移除" aria-label="从词库移除 ' + esc(w.w) + '">×</button>' +
@@ -1621,6 +1646,16 @@
     });
   }
 
+  function quickReview(word) {
+    var rec = S.word(word);
+    var g = rec && rec.lv >= 4 ? 4 : 3;
+    SRS.grade(word, g);
+    var next = S.word(word);
+    var when = next && next.due ? dueLabel(next) : '';
+    toast('已记录「' + word + '」' + (when ? ' · 下次 ' + when : ''));
+    render();
+  }
+
   function closeDrawer() {
     $('#drawer').classList.remove('open');
     $('#drawerMask').classList.remove('open');
@@ -1722,6 +1757,7 @@
     else stopExamTimer();
     $('#streakNum').textContent = S.get().stats.streak || 0;
     if (state.view === 'library') {
+      setupLibObserver();
       var inp = $('#libSearch');
       if (inp && state.lib.q && document.activeElement !== inp) {
         inp.value = state.lib.q;
@@ -1769,6 +1805,14 @@
 
     document.addEventListener('click', function (e) {
       var t = e.target;
+
+      var quick = t.closest('[data-quick]');
+      if (quick) {
+        e.preventDefault();
+        e.stopPropagation();
+        quickReview(quick.dataset.quick);
+        return;
+      }
 
       var del = t.closest('[data-del]');
       if (del) {
@@ -1970,10 +2014,6 @@
     });
 
     document.addEventListener('click', function (e) {
-      if (e.target.id === 'loadMore') {
-        state.lib.limit += 120;
-        render();
-      }
       if (e.target.id === 'toastAction' && toastAction) {
         var fn = toastAction;
         toastAction = null;
@@ -2056,6 +2096,23 @@
         if (it) speak(it.w.w);
       }
     });
+
+    /* 词库滚动到底部自动加载 */
+    window.addEventListener('scroll', function () {
+      if (state.view !== 'library') return;
+      var doc = document.documentElement;
+      if (window.innerHeight + window.scrollY < doc.scrollHeight - 600) return;
+      loadMoreLibrary();
+    }, { passive: true });
+
+    // 兜底：某些浏览器/内嵌面板里 scroll 事件不触发时，定时检查是否到底
+    setInterval(function () {
+      if (state.view !== 'library' || state.lib.loading) return;
+      if (state.lib.limit >= (state.lib.total || 0)) return;
+      var doc = document.documentElement;
+      if (window.innerHeight + window.scrollY < doc.scrollHeight - 700) return;
+      loadMoreLibrary();
+    }, 600);
 
     /* 主题跟随系统 */
     if (matchMedia) {
